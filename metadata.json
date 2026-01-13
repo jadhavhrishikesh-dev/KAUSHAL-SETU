@@ -1,0 +1,7 @@
+{
+  "name": "KAUSHAL-SETU",
+  "description": "A comprehensive assessment and retention management platform for Agniveers, featuring AI-driven RRI scoring, role-based dashboards, and continuous feedback loops.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
