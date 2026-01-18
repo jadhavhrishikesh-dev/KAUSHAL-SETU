@@ -4,6 +4,7 @@ import { UserRole, User } from './types';
 import Login from './components/Login';
 import AgniveerDashboard from './components/AgniveerDashboard';
 import OfficerDashboard from './components/OfficerDashboard';
+import TrainingOfficerDashboard from './components/TrainingOfficerDashboard';
 import CompanyDashboard from './components/CompanyDashboard';
 import BattalionDashboard from './components/BattalionDashboard';
 import AdminDashboard from './components/AdminDashboard';
@@ -38,7 +39,7 @@ const App: React.FC = () => {
       case UserRole.AGNIVEER:
         return <AgniveerDashboard user={user} />;
       case UserRole.OFFICER:
-        return <OfficerDashboard user={user} />;
+        return <TrainingOfficerDashboard user={user} />;
       case UserRole.COY_CDR:
         return <CompanyDashboard user={user} />;
       case UserRole.COY_CLK:
@@ -56,7 +57,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col">
       <Navbar user={user} onLogout={handleLogout} />
       <main className="flex-1 bg-[#fdfbf7] p-4 md:p-8">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           {renderDashboard()}
         </div>
       </main>

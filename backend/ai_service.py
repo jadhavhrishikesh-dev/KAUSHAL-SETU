@@ -13,23 +13,29 @@ def generate_rri_report(agniveer_name: str, rri_data: Dict[str, Any]) -> str:
     
     # Construct Prompt
     prompt = f"""
-    Role: You are a Commanding Officer analyzing the Retention Readiness of an Agniveer soldier.
-    Task: Write a concise 3-4 sentence summary report based on the following data. Focus on strengths, weaknesses, and a final recommendation for retention.
+    Role: You are the Company Commander's Second-in-Command (2IC).
+    Task: specific patterns in the provided data.
+    
+    STRICT CONSTRAINTS:
+    1. ONLY use the data provided below. Do NOT invent personal details (e.g., marriage, leave, family issues) unless explicitly stated.
+    2. If a data point is missing, state "No data available".
+    3. Every insight must be backed by a specific score or number from the profile.
 
-    Soldier: {agniveer_name}
-    RRI Score: {rri_data.get('rri_score')} / 100 (Band: {rri_data.get('retention_band')})
+    Soldier Profile:
+    - Name: {agniveer_name}
+    - RRI Score: {rri_data.get('rri_score')}/100 (Band: {rri_data.get('retention_band')})
+    - Technical Competency: {rri_data.get('technical_component')}/50. Breakdown: {rri_data.get('technical_breakdown')}
+    - Behavioral Attributes: {rri_data.get('behavioral_component')}/30. Status: {rri_data.get('behavioral_status')}. Trend: {rri_data.get('behavioral_trend')}
+    - Achievements: {rri_data.get('achievement_component')}/20. Count: {rri_data.get('achievement_count')}
+
+    Briefing Format:
+    1. SITUATION: One factual sentence on current RRI standing.
+    2. DATA-DRIVEN INSIGHTS:
+       - [Insight 1]: (Cited Data Point)
+       - [Insight 2]: (Cited Data Point)
+    3. COMMAND CONSIDERATIONS: One logical inference based ONLY on the scores (e.g., "High technical but low behavioral suggests need for mentorship").
     
-    Technical Skills ({rri_data.get('technical_component')}/50):
-    - Breakdown: {rri_data.get('technical_breakdown')}
-    
-    Behavioral Competencies ({rri_data.get('behavioral_component')}/30):
-    - Status: {rri_data.get('behavioral_status')}
-    - Trend: {rri_data.get('behavioral_trend')}
-    
-    Achievements ({rri_data.get('achievement_component')}/20):
-    - Count: {rri_data.get('achievement_count')}
-    
-    Report:
+    Tone: Objective, factual, concise.
     """
 
     payload = {
@@ -37,8 +43,8 @@ def generate_rri_report(agniveer_name: str, rri_data: Dict[str, Any]) -> str:
         "prompt": prompt,
         "stream": False,
         "options": {
-            "temperature": 0.7,
-            "num_predict": 200
+            "temperature": 0.3, # Lower temperature for more deterministic/factual output
+            "num_predict": 400
         }
     }
 

@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from .models import UserRole, AchievementType, RRIBand
+from .models import UserRole, AchievementType, RRIBand, MedicalCategory
 
 # User Schemas
 class UserBase(BaseModel):
@@ -84,6 +84,7 @@ class AgniveerResponse(AgniveerBase):
     pan_card: Optional[str] = None
     adhaar_card: Optional[str] = None
     higher_qualification: Optional[str] = None
+    upcoming_tests: Optional[List['ScheduledTestResponse']] = []
     
     class Config:
         from_attributes = True
@@ -91,6 +92,13 @@ class AgniveerResponse(AgniveerBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    username: str
+    role: str
+    full_name: Optional[str] = None
+    rank: Optional[str] = None
+    assigned_company: Optional[str] = None
+    agniveer_id: Optional[int] = None
+    user_id: int
 
 class TokenData(BaseModel):
     username: Optional[str] = None
@@ -172,20 +180,7 @@ class RRIResponse(BaseModel):
         from_attributes = True
 
 # Message Schemas
-class MessageCreate(BaseModel):
-    agniveer_id: int
-    sender_role: str
-    recipient_role: str
-    content: str
 
-class MessageResponse(MessageCreate):
-    id: int
-    timestamp: datetime
-    
-    class Config:
-        from_attributes = True
-    class Config:
-        from_attributes = True
 
 # Admin / System Schemas
 class PolicyCreate(BaseModel):
@@ -258,3 +253,97 @@ class InboxItem(BaseModel):
 
 class EmailDetail(InboxItem):
     body: str
+class LeaveCreate(BaseModel):
+    agniveer_id: int
+    leave_type: str
+    start_date: datetime
+    end_date: datetime
+    reason: Optional[str] = None
+    start_date: datetime
+    end_date: datetime
+
+class LeaveStatusUpdate(BaseModel):
+    status: str
+
+class GrievanceResolution(BaseModel):
+    status: str
+    resolution_notes: str
+
+class GrievanceCreate(BaseModel):
+    agniveer_id: int
+    type: str # ADMIN, MEDICAL, PERSONAL
+    description: str
+    addressed_to: str # CO, COMMANDER
+
+class MedicalRecordCreate(BaseModel):
+    agniveer_id: int
+    diagnosis: str
+    hospital_name: str
+    admission_date: datetime
+    discharge_date: Optional[datetime] = None
+    category: Optional[MedicalCategory] = MedicalCategory.SHAPE_1
+    remarks: Optional[str] = None
+
+class MedicalRecordResponse(MedicalRecordCreate):
+    id: int
+    class Config:
+        from_attributes = True
+
+# ============================================================
+# TRAINING OFFICER SCHEMAS
+# ============================================================
+from .models import TestType
+
+class ScheduledTestCreate(BaseModel):
+    name: str
+    test_type: TestType
+    description: Optional[str] = None
+    scheduled_date: datetime
+    end_time: Optional[datetime] = None
+    location: Optional[str] = None
+    target_type: str  # "BATCH", "COMPANY", "ALL"
+    target_value: Optional[str] = None
+    instructor: Optional[str] = None
+    max_marks: Optional[float] = 100
+    passing_marks: Optional[float] = 50
+
+class ScheduledTestUpdate(BaseModel):
+    name: Optional[str] = None
+    test_type: Optional[TestType] = None
+    description: Optional[str] = None
+    scheduled_date: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    location: Optional[str] = None
+    target_type: Optional[str] = None
+    target_value: Optional[str] = None
+    instructor: Optional[str] = None
+    max_marks: Optional[float] = None
+    passing_marks: Optional[float] = None
+    status: Optional[str] = None
+
+class ScheduledTestResponse(ScheduledTestCreate):
+    id: int
+    created_by: Optional[int] = None
+    created_at: datetime
+    status: str
+    results_count: Optional[int] = 0
+    
+    class Config:
+        from_attributes = True
+
+class TestResultCreate(BaseModel):
+    agniveer_id: int
+    score: Optional[float] = None
+    remarks: Optional[str] = None
+    is_absent: bool = False
+
+class TestResultResponse(TestResultCreate):
+    id: int
+    test_id: int
+    recorded_at: datetime
+    recorded_by: Optional[int] = None
+    agniveer_name: Optional[str] = None
+    agniveer_service_id: Optional[str] = None
+    
+    class Config:
+        from_attributes = True

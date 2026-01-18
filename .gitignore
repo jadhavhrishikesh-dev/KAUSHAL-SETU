@@ -25,3 +25,8 @@ coverage/
 
 # OS
 Thumbs.db
+
+# Sensitive
+.env.*
+uploads/
+.gemini/

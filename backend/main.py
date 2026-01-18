@@ -27,7 +27,7 @@ if os.getenv("FORCE_HTTPS", "false").lower() == "true":
     app.add_middleware(HTTPSRedirectMiddleware)
 
 # CORS Setup - Read from environment or use defaults
-cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://192.168.1.7:3000")
 origins = [origin.strip() for origin in cors_origins_str.split(",")]
 
 app.add_middleware(
@@ -49,7 +49,8 @@ def get_db():
     finally:
         db.close()
 
-from . import models, schemas, database, rri_engine, analytics, ai_service, admin_service
+
+
 from .auth_utils import verify_password, get_password_hash, create_access_token, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -86,7 +87,28 @@ def login_for_access_token(user_credentials: schemas.UserLogin, db: Session = De
     access_token = create_access_token(
         data={"sub": user.username, "role": user.role, "agniveer_id": user.agniveer_id}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    # Determine display details
+    full_name = user.full_name
+    rank = user.rank
+    assigned_company = user.assigned_company
+    
+    if user.agniveer:
+        full_name = user.agniveer.name
+        rank = user.agniveer.rank
+        assigned_company = user.agniveer.company
+        
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "username": user.username,
+        "role": user.role,
+        "full_name": full_name or user.username,
+        "rank": rank,
+        "assigned_company": assigned_company,
+        "agniveer_id": user.agniveer_id,
+        "user_id": user.user_id
+    }
 
 # Dependency to get full current user object
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -213,6 +235,16 @@ def read_agniveer_profile(agniveer_id: int, db: Session = Depends(get_db)):
     agniveer = db.query(models.Agniveer).filter(models.Agniveer.id == agniveer_id).first()
     if agniveer is None:
         raise HTTPException(status_code=404, detail="Agniveer not found")
+        
+    # Fetch upcoming scheduled tests
+    upcoming_tests = db.query(models.ScheduledTest).filter(
+        models.ScheduledTest.status == 'SCHEDULED',
+        (models.ScheduledTest.target_type == 'ALL') |
+        ((models.ScheduledTest.target_type == 'BATCH') & (models.ScheduledTest.target_value == agniveer.batch_no)) |
+        ((models.ScheduledTest.target_type == 'COMPANY') & (models.ScheduledTest.target_value == agniveer.company))
+    ).order_by(models.ScheduledTest.scheduled_date).all()
+    
+    agniveer.upcoming_tests = upcoming_tests
     return agniveer
 
 # --- Assessment Endpoints ---
@@ -330,6 +362,38 @@ def get_technical_gaps(unit_id: str, db: Session = Depends(get_db)):
 def get_retention_risk_list(unit_id: str, db: Session = Depends(get_db)):
     return analytics.get_retention_risk(db, unit_id)
 
+@app.get("/api/analytics/company/{unit_id}/pending")
+def get_pending_assessments(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_pending_assessments(db, unit_id)
+
+@app.get("/api/analytics/company/{unit_id}/rri-trend")
+def get_rri_trend(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_rri_trend(db, unit_id)
+
+@app.get("/api/analytics/company/{unit_id}/technical-trend")
+def get_technical_trend(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_technical_trend(db, unit_id)
+
+@app.get("/api/analytics/company/{unit_id}/behavioral-trend")
+def get_behavioral_trend(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_behavioral_trend(db, unit_id)
+
+@app.get("/api/analytics/company/{unit_id}/competency-insights")
+def get_competency_insights(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_competency_insights(db, unit_id)
+
+@app.get("/api/analytics/company/{unit_id}/honor-board")
+def get_honor_board(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_honor_board(db, unit_id)
+
+@app.get("/api/analytics/company/{unit_id}/command-hub")
+def get_command_hub(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_command_hub_data(db, unit_id)
+
+@app.get("/api/analytics/company/{unit_id}/action-center")
+def get_action_center(unit_id: str, db: Session = Depends(get_db)):
+    return analytics.get_action_center_items(db, unit_id)
+
 from . import models, schemas, database, rri_engine, analytics, ai_service
 
 # ... (Existing code) ...
@@ -379,26 +443,126 @@ def generate_ai_report(agniveer_id: int, db: Session = Depends(get_db)):
     report = ai_service.generate_rri_report(agniveer.name, context)
     return {"report": report}
 
-# --- Message Endpoints ---
 
-@app.post("/api/messages", response_model=schemas.MessageResponse)
-def send_message(message: schemas.MessageCreate, db: Session = Depends(get_db)):
-    db_msg = models.Message(**message.dict())
-    db.add(db_msg)
+# --- Leave Management Endpoints ---
+
+@app.post("/api/leave/apply")
+def apply_leave(leave: schemas.LeaveCreate, db: Session = Depends(get_db)):
+    db_leave = models.LeaveRecord(
+        agniveer_id=leave.agniveer_id,
+        leave_type=leave.leave_type,
+        start_date=leave.start_date,
+        end_date=leave.end_date,
+        reason=leave.reason
+    )
+    db.add(db_leave)
     db.commit()
-    db.refresh(db_msg)
-    return db_msg
+    db.refresh(db_leave)
+    return db_leave
 
-@app.get("/api/messages/{agniveer_id}", response_model=List[schemas.MessageResponse])
-def get_agniveer_messages(agniveer_id: int, db: Session = Depends(get_db)):
-    return db.query(models.Message).filter(models.Message.agniveer_id == agniveer_id).order_by(models.Message.timestamp.asc()).all()
+@app.get("/api/leave/{agniveer_id}")
+def get_leaves(agniveer_id: int, db: Session = Depends(get_db)):
+    return db.query(models.LeaveRecord).filter(models.LeaveRecord.agniveer_id == agniveer_id).order_by(models.LeaveRecord.start_date.desc()).all()
 
-@app.get("/api/messages/role/{role}", response_model=List[schemas.MessageResponse])
-def get_role_messages(role: str, db: Session = Depends(get_db)):
-    # Returns messages where this role is sender OR recipient
-    return db.query(models.Message).filter(
-        (models.Message.recipient_role == role) | (models.Message.sender_role == role)
-    ).order_by(models.Message.timestamp.desc()).all()
+@app.delete("/api/leave/cancel/{leave_id}")
+def cancel_leave(leave_id: int, db: Session = Depends(get_db)):
+    leave = db.query(models.LeaveRecord).filter(models.LeaveRecord.id == leave_id).first()
+    if not leave:
+        raise HTTPException(status_code=404, detail="Leave record not found")
+    
+    if leave.status != models.LeaveStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Only PENDING leave requests can be cancelled")
+        
+    db.delete(leave)
+    db.commit()
+    return {"message": "Leave request cancelled"}
+
+
+@app.get("/api/company/{company_name}/leaves")
+def get_company_leaves(company_name: str, db: Session = Depends(get_db)):
+    # Join with Agniveer to filter by company (or user.assigned_company logic if strict)
+    # Assuming 'company_name' corresponds to Agniveer.company
+    # Fetch PENDING requests only for action items, or all for history. Let's fetch PENDING for now.
+    return db.query(models.LeaveRecord).join(models.Agniveer).filter(
+        models.Agniveer.company == company_name,
+        models.LeaveRecord.status == models.LeaveStatus.PENDING
+    ).all()
+
+@app.put("/api/leave/{leave_id}/status")
+def update_leave_status(leave_id: int, status_update: schemas.LeaveStatusUpdate, db: Session = Depends(get_db)):
+    leave = db.query(models.LeaveRecord).filter(models.LeaveRecord.id == leave_id).first()
+    if not leave:
+        raise HTTPException(status_code=404, detail="Leave record not found")
+    
+    leave.status = status_update.status
+    db.commit()
+    return {"message": "Status updated"}
+
+# --- Grievance Endpoints ---
+
+@app.post("/api/grievance/submit")
+def submit_grievance(grievance: schemas.GrievanceCreate, db: Session = Depends(get_db)):
+    try:
+        db_grievance = models.Grievance(
+            agniveer_id=grievance.agniveer_id,
+            type=grievance.type,
+            description=grievance.description,
+            addressed_to=grievance.addressed_to
+        )
+        db.add(db_grievance)
+        db.commit()
+        db.refresh(db_grievance)
+        return db_grievance
+    except Exception as e:
+        print(f"Error submitting grievance: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
+
+@app.get("/api/grievance/{agniveer_id}")
+def get_grievances(agniveer_id: int, db: Session = Depends(get_db)):
+    return db.query(models.Grievance).filter(models.Grievance.agniveer_id == agniveer_id).order_by(models.Grievance.submitted_at.desc()).all()
+
+@app.get("/api/company/{company_name}/grievances")
+def get_company_grievances(company_name: str, db: Session = Depends(get_db)):
+    # Fetch PENDING or IN_REVIEW grievances for the company
+    return db.query(models.Grievance).join(models.Agniveer).filter(
+        models.Agniveer.company == company_name
+    ).order_by(models.Grievance.submitted_at.desc()).all()
+
+@app.put("/api/grievance/{grievance_id}/resolve")
+def resolve_grievance(grievance_id: int, resolution: schemas.GrievanceResolution, db: Session = Depends(get_db)):
+    grievance = db.query(models.Grievance).filter(models.Grievance.id == grievance_id).first()
+    if not grievance:
+        raise HTTPException(status_code=404, detail="Grievance not found")
+    
+    grievance.status = resolution.status
+    grievance.resolution_notes = resolution.resolution_notes
+    db.commit()
+    return {"message": "Grievance resolved"}
+
+
+# --- Medical Record Endpoints (Clerk Dashboard V2) ---
+
+@app.post("/api/medical/add")
+def add_medical_record(record: schemas.MedicalRecordCreate, db: Session = Depends(get_db)):
+    db_record = models.MedicalRecord(
+        agniveer_id=record.agniveer_id,
+        diagnosis=record.diagnosis,
+        hospital_name=record.hospital_name,
+        admission_date=record.admission_date,
+        discharge_date=record.discharge_date,
+        category=record.category,
+        remarks=record.remarks
+    )
+    db.add(db_record)
+    db.commit()
+    db.refresh(db_record)
+    return db_record
+
+@app.get("/api/medical/{agniveer_id}")
+def get_medical_records(agniveer_id: int, db: Session = Depends(get_db)):
+    return db.query(models.MedicalRecord).filter(models.MedicalRecord.agniveer_id == agniveer_id).order_by(models.MedicalRecord.admission_date.desc()).all()
+
 
 # --- Admin & System Endpoints ---
 
@@ -762,3 +926,266 @@ async def websocket_mail(websocket: WebSocket, user_id: int):
             await websocket.send_text(f"pong:{data}")
     except WebSocketDisconnect:
         ws_manager.disconnect(user_id, websocket)
+
+# ============================================================
+# TRAINING OFFICER ENDPOINTS
+# ============================================================
+
+@app.post("/api/tests", response_model=schemas.ScheduledTestResponse)
+def create_scheduled_test(
+    test: schemas.ScheduledTestCreate, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Create a new scheduled test."""
+    db_test = models.ScheduledTest(
+        name=test.name,
+        test_type=test.test_type,
+        description=test.description,
+        scheduled_date=test.scheduled_date,
+        end_time=test.end_time,
+        location=test.location,
+        target_type=test.target_type,
+        target_value=test.target_value,
+        instructor=test.instructor,
+        max_marks=test.max_marks,
+        passing_marks=test.passing_marks,
+        created_by=current_user.user_id
+    )
+    db.add(db_test)
+    db.commit()
+    db.refresh(db_test)
+    return db_test
+
+@app.get("/api/tests", response_model=List[schemas.ScheduledTestResponse])
+def get_scheduled_tests(
+    target_type: Optional[str] = None,
+    target_value: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get list of scheduled tests with optional filters."""
+    query = db.query(models.ScheduledTest)
+    
+    if target_type:
+        query = query.filter(models.ScheduledTest.target_type == target_type)
+    if target_value:
+        query = query.filter(models.ScheduledTest.target_value == target_value)
+    if status:
+        query = query.filter(models.ScheduledTest.status == status)
+    
+    tests = query.order_by(models.ScheduledTest.scheduled_date.desc()).all()
+    
+    # Add results count
+    result = []
+    for t in tests:
+        test_dict = {
+            "id": t.id,
+            "name": t.name,
+            "test_type": t.test_type,
+            "description": t.description,
+            "scheduled_date": t.scheduled_date,
+            "end_time": t.end_time,
+            "location": t.location,
+            "target_type": t.target_type,
+            "target_value": t.target_value,
+            "instructor": t.instructor,
+            "max_marks": t.max_marks,
+            "passing_marks": t.passing_marks,
+            "created_by": t.created_by,
+            "created_at": t.created_at,
+            "status": t.status,
+            "results_count": len(t.results) if t.results else 0
+        }
+        result.append(test_dict)
+    
+    return result
+
+@app.get("/api/tests/{test_id}")
+def get_scheduled_test(test_id: int, db: Session = Depends(get_db)):
+    """Get a single test with details."""
+    test = db.query(models.ScheduledTest).filter(models.ScheduledTest.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    return {
+        "id": test.id,
+        "name": test.name,
+        "test_type": test.test_type,
+        "description": test.description,
+        "scheduled_date": test.scheduled_date,
+        "end_time": test.end_time,
+        "location": test.location,
+        "target_type": test.target_type,
+        "target_value": test.target_value,
+        "instructor": test.instructor,
+        "max_marks": test.max_marks,
+        "passing_marks": test.passing_marks,
+        "created_by": test.created_by,
+        "created_at": test.created_at,
+        "status": test.status,
+        "results_count": len(test.results) if test.results else 0
+    }
+
+@app.put("/api/tests/{test_id}")
+def update_scheduled_test(
+    test_id: int, 
+    test_update: schemas.ScheduledTestUpdate, 
+    db: Session = Depends(get_db)
+):
+    """Update a scheduled test."""
+    test = db.query(models.ScheduledTest).filter(models.ScheduledTest.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    update_data = test_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(test, key, value)
+    
+    db.commit()
+    db.refresh(test)
+    return {"status": "success", "message": "Test updated"}
+
+@app.delete("/api/tests/{test_id}")
+def delete_scheduled_test(test_id: int, db: Session = Depends(get_db)):
+    """Delete/Cancel a scheduled test."""
+    test = db.query(models.ScheduledTest).filter(models.ScheduledTest.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    db.delete(test)
+    db.commit()
+    return {"status": "success", "message": "Test deleted"}
+
+# --- Test Results ---
+
+@app.post("/api/tests/{test_id}/results", response_model=schemas.TestResultResponse)
+def add_test_result(
+    test_id: int,
+    result: schemas.TestResultCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Add a single result for a test."""
+    test = db.query(models.ScheduledTest).filter(models.ScheduledTest.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    # Check if result already exists for this agniveer
+    existing = db.query(models.TestResult).filter(
+        models.TestResult.test_id == test_id,
+        models.TestResult.agniveer_id == result.agniveer_id
+    ).first()
+    
+    if existing:
+        # Update existing
+        existing.score = result.score
+        existing.remarks = result.remarks
+        existing.is_absent = result.is_absent
+        existing.recorded_by = current_user.user_id
+        db.commit()
+        db.refresh(existing)
+        
+        agniveer = db.query(models.Agniveer).filter(models.Agniveer.id == existing.agniveer_id).first()
+        return {
+            "id": existing.id,
+            "test_id": existing.test_id,
+            "agniveer_id": existing.agniveer_id,
+            "score": existing.score,
+            "remarks": existing.remarks,
+            "is_absent": existing.is_absent,
+            "recorded_at": existing.recorded_at,
+            "recorded_by": existing.recorded_by,
+            "agniveer_name": agniveer.name if agniveer else None,
+            "agniveer_service_id": agniveer.service_id if agniveer else None
+        }
+    
+    # Create new result
+    db_result = models.TestResult(
+        test_id=test_id,
+        agniveer_id=result.agniveer_id,
+        score=result.score,
+        remarks=result.remarks,
+        is_absent=result.is_absent,
+        recorded_by=current_user.user_id
+    )
+    db.add(db_result)
+    db.commit()
+    db.refresh(db_result)
+    
+    agniveer = db.query(models.Agniveer).filter(models.Agniveer.id == db_result.agniveer_id).first()
+    return {
+        "id": db_result.id,
+        "test_id": db_result.test_id,
+        "agniveer_id": db_result.agniveer_id,
+        "score": db_result.score,
+        "remarks": db_result.remarks,
+        "is_absent": db_result.is_absent,
+        "recorded_at": db_result.recorded_at,
+        "recorded_by": db_result.recorded_by,
+        "agniveer_name": agniveer.name if agniveer else None,
+        "agniveer_service_id": agniveer.service_id if agniveer else None
+    }
+
+@app.get("/api/tests/{test_id}/results", response_model=List[schemas.TestResultResponse])
+def get_test_results(test_id: int, db: Session = Depends(get_db)):
+    """Get all results for a test."""
+    test = db.query(models.ScheduledTest).filter(models.ScheduledTest.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    results = db.query(models.TestResult).filter(models.TestResult.test_id == test_id).all()
+    
+    response = []
+    for r in results:
+        agniveer = db.query(models.Agniveer).filter(models.Agniveer.id == r.agniveer_id).first()
+        response.append({
+            "id": r.id,
+            "test_id": r.test_id,
+            "agniveer_id": r.agniveer_id,
+            "score": r.score,
+            "remarks": r.remarks,
+            "is_absent": r.is_absent,
+            "recorded_at": r.recorded_at,
+            "recorded_by": r.recorded_by,
+            "agniveer_name": agniveer.name if agniveer else None,
+            "agniveer_service_id": agniveer.service_id if agniveer else None
+        })
+    
+    return response
+
+@app.get("/api/tests/{test_id}/agniveers")
+def get_test_agniveers(test_id: int, db: Session = Depends(get_db)):
+    """Get list of Agniveers eligible for a test based on target_type."""
+    test = db.query(models.ScheduledTest).filter(models.ScheduledTest.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    query = db.query(models.Agniveer)
+    
+    if test.target_type == "BATCH":
+        query = query.filter(models.Agniveer.batch_no == test.target_value)
+    elif test.target_type == "COMPANY":
+        query = query.filter(models.Agniveer.company == test.target_value)
+    # "ALL" - no filter needed
+    
+    agniveers = query.all()
+    
+    # Get existing results for this test
+    existing_results = {r.agniveer_id: r for r in test.results}
+    
+    result = []
+    for a in agniveers:
+        existing = existing_results.get(a.id)
+        result.append({
+            "id": a.id,
+            "service_id": a.service_id,
+            "name": a.name,
+            "batch_no": a.batch_no,
+            "company": a.company,
+            "score": existing.score if existing else None,
+            "is_absent": existing.is_absent if existing else False,
+            "has_result": existing is not None
+        })
+    
+    return result

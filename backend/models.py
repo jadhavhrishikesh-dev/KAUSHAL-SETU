@@ -33,7 +33,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False) # Service ID or 'admin'
     password_hash = Column(String, nullable=False)
     role = Column(SQLEnum(UserRole), nullable=False)
-    role = Column(SQLEnum(UserRole), nullable=False)
+
     agniveer_id = Column(Integer, ForeignKey("agniveers.id"), nullable=True)
     
     # Officer/Commander Fields
@@ -55,7 +55,7 @@ class Agniveer(Base):
     # Detailed Bio-Data
     batch_no = Column(String) # e.g. "Jan 2026"
     photo_url = Column(String, nullable=True)
-    photo_url = Column(String, nullable=True)
+
     dob = Column(DateTime, nullable=True)
     reporting_date = Column(DateTime, nullable=True)
     
@@ -83,6 +83,9 @@ class Agniveer(Base):
     technical_assessments = relationship("TechnicalAssessment", back_populates="agniveer")
     behavioral_assessments = relationship("BehavioralAssessment", back_populates="agniveer")
     achievements = relationship("Achievement", back_populates="agniveer")
+    leaves = relationship("LeaveRecord", back_populates="agniveer")
+    grievances = relationship("Grievance", back_populates="agniveer")
+    medical_records = relationship("MedicalRecord", back_populates="agniveer")
     rri_calculations = relationship("RetentionReadiness", back_populates="agniveer")
 
 class TechnicalAssessment(Base):
@@ -153,18 +156,7 @@ class RetentionReadiness(Base):
     
     agniveer = relationship("Agniveer", back_populates="rri_calculations")
 
-class Message(Base):
-    __tablename__ = "messages"
 
-    id = Column(Integer, primary_key=True, index=True)
-    agniveer_id = Column(Integer, ForeignKey("agniveers.id"), nullable=False) # The Agniveer involved
-    sender_role = Column(String, nullable=False) # "AGNIVEER", "COY_CDR", "CO"
-    recipient_role = Column(String, nullable=False) # "AGNIVEER", "COY_CDR", "CO"
-    content = Column(String, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    
-    
-    agniveer = relationship("Agniveer")
 
 class Policy(Base):
     __tablename__ = "policies"
@@ -239,3 +231,120 @@ class RateLimitLog(Base):
     
     user = relationship("User", foreign_keys=[user_id])
 
+class LeaveStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+class LeaveRecord(Base):
+    __tablename__ = "leave_records"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    agniveer_id = Column(Integer, ForeignKey("agniveers.id"), nullable=False)
+    leave_type = Column(String, nullable=False) # CASUAL, MEDICAL, SPECIAL
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=False)
+    reason = Column(String, nullable=True)
+    status = Column(SQLEnum(LeaveStatus), default=LeaveStatus.PENDING)
+    
+    agniveer = relationship("Agniveer", back_populates="leaves")
+
+class GrievanceStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    IN_REVIEW = "IN_REVIEW"
+    RESOLVED = "RESOLVED"
+
+class Grievance(Base):
+    __tablename__ = "grievances"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    agniveer_id = Column(Integer, ForeignKey("agniveers.id"), nullable=False)
+    type = Column(String, nullable=False) # ADMIN, MEDICAL, PERSONAL
+    description = Column(String, nullable=False)
+    addressed_to = Column(String, nullable=False) # CO, COMMANDER
+    status = Column(SQLEnum(GrievanceStatus), default=GrievanceStatus.PENDING)
+    submitted_at = Column(DateTime, default=datetime.utcnow)
+    resolution_notes = Column(String, nullable=True)
+    
+    agniveer = relationship("Agniveer", back_populates="grievances")
+
+class MedicalCategory(str, enum.Enum):
+    SHAPE_1 = "SHAPE 1"
+    SHAPE_2 = "SHAPE 2"
+    SHAPE_3 = "SHAPE 3"
+    SHAPE_4 = "SHAPE 4"
+    SHAPE_5 = "SHAPE 5"
+
+class MedicalRecord(Base):
+    __tablename__ = "medical_records"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    agniveer_id = Column(Integer, ForeignKey("agniveers.id"), nullable=False)
+    diagnosis = Column(String, nullable=False)
+    hospital_name = Column(String, nullable=False)
+    admission_date = Column(DateTime, nullable=False)
+    discharge_date = Column(DateTime, nullable=True)
+    category = Column(SQLEnum(MedicalCategory), default=MedicalCategory.SHAPE_1)
+    remarks = Column(String, nullable=True)
+    
+    agniveer = relationship("Agniveer", back_populates="medical_records")
+
+# ============================================================
+# TRAINING OFFICER MODULE
+# ============================================================
+
+class TestType(str, enum.Enum):
+    PFT = "PFT"              # Physical Fitness Test
+    FIRING = "FIRING"        # Firing Range
+    WEAPONS = "WEAPONS"      # Weapon Handling
+    TACTICAL = "TACTICAL"    # Tactical Drills
+    COGNITIVE = "COGNITIVE"  # Written/Mental Tests
+    CLASSROOM = "CLASSROOM"  # Theory Sessions
+    CUSTOM = "CUSTOM"        # User-defined tests
+
+class ScheduledTest(Base):
+    __tablename__ = "scheduled_tests"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Test Identity
+    name = Column(String, nullable=False)
+    test_type = Column(SQLEnum(TestType), nullable=False)
+    description = Column(String, nullable=True)
+    
+    # Scheduling
+    scheduled_date = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=True)
+    location = Column(String, nullable=True)
+    
+    # Assignment (Flexible)
+    target_type = Column(String, nullable=False)  # "BATCH", "COMPANY", "ALL"
+    target_value = Column(String, nullable=True)  # Batch number or Company name
+    
+    # Metadata
+    instructor = Column(String, nullable=True)
+    max_marks = Column(Float, default=100)
+    passing_marks = Column(Float, default=50)
+    created_by = Column(Integer, ForeignKey("users_auth.user_id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="SCHEDULED")  # SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
+    
+    # Relationships
+    results = relationship("TestResult", back_populates="test", cascade="all, delete-orphan")
+
+class TestResult(Base):
+    __tablename__ = "test_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    test_id = Column(Integer, ForeignKey("scheduled_tests.id"), nullable=False)
+    agniveer_id = Column(Integer, ForeignKey("agniveers.id"), nullable=False)
+    
+    score = Column(Float, nullable=True)
+    remarks = Column(String, nullable=True)
+    is_absent = Column(Boolean, default=False)
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+    recorded_by = Column(Integer, ForeignKey("users_auth.user_id"), nullable=True)
+    
+    # Relationships
+    test = relationship("ScheduledTest", back_populates="results")
+    agniveer = relationship("Agniveer")

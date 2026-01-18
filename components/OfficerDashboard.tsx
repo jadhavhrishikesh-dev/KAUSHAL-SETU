@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
+import { API_BASE_URL } from '../config';
 
 interface AgniveerRecord {
   id: number;
@@ -20,37 +21,21 @@ const OfficerDashboard: React.FC<{ user: User }> = ({ user }) => {
   const [selectedAgniveer, setSelectedAgniveer] = useState<AgniveerRecord | null>(null);
 
   // Assessment Form State
-  const [assessmentType, setAssessmentType] = useState<'TECHNICAL' | 'BEHAVIORAL' | 'ACHIEVEMENT'>('TECHNICAL');
+  // const [assessmentType, setAssessmentType] = useState<'TECHNICAL' | 'BEHAVIORAL' | 'ACHIEVEMENT'>('TECHNICAL');
+  // Hardcoded to TECHNICAL for Officer Dashboard
+  const assessmentType = 'TECHNICAL';
 
   // Technical Form
   const [techForm, setTechForm] = useState({
     firing_score: '',
     weapon_handling_score: '',
     tactical_score: '',
-    cognitive_score: '',
-    remarks: ''
+    cognitive_score: ''
   });
 
-  // Behavioral Form
-  const [behavForm, setBehavForm] = useState({
-    quarter: 'Q1',
-    initiative: '',
-    dedication: '',
-    team_spirit: '',
-    courage: '',
-    motivation: '',
-    adaptability: '',
-    communication: '',
-    remarks: ''
-  });
 
-  // Achievement Form
-  const [achieveForm, setAchieveForm] = useState({
-    title: '',
-    type: 'SPORTS',
-    points: '',
-    validity_months: '24'
-  });
+
+
 
   // Search API
   useEffect(() => {
@@ -65,7 +50,7 @@ const OfficerDashboard: React.FC<{ user: User }> = ({ user }) => {
       // Actually, backend main.py has `read_agniveers`.
 
       try {
-        const res = await fetch(`http://localhost:8000/api/agniveers/?skip=0&limit=100`);
+        const res = await fetch(`${API_BASE_URL}/api/agniveers/?skip=0&limit=100`);
         if (res.ok) {
           const data: AgniveerRecord[] = await res.json();
           // Client side filter
@@ -87,46 +72,15 @@ const OfficerDashboard: React.FC<{ user: User }> = ({ user }) => {
     e.preventDefault();
     if (!selectedAgniveer) return;
 
-    let url = '';
-    let body = {};
-
-    if (assessmentType === 'TECHNICAL') {
-      url = 'http://localhost:8000/api/assessments/technical';
-      body = {
-        agniveer_id: selectedAgniveer.id,
-        assessment_date: new Date().toISOString(),
-        firing_score: parseFloat(techForm.firing_score),
-        weapon_handling_score: parseFloat(techForm.weapon_handling_score),
-        tactical_score: parseFloat(techForm.tactical_score),
-        cognitive_score: parseFloat(techForm.cognitive_score),
-        remarks: techForm.remarks
-      };
-    } else if (assessmentType === 'BEHAVIORAL') {
-      url = 'http://localhost:8000/api/assessments/behavioral';
-      body = {
-        agniveer_id: selectedAgniveer.id,
-        assessment_date: new Date().toISOString(),
-        quarter: behavForm.quarter,
-        initiative: parseFloat(behavForm.initiative),
-        dedication: parseFloat(behavForm.dedication),
-        team_spirit: parseFloat(behavForm.team_spirit),
-        courage: parseFloat(behavForm.courage),
-        motivation: parseFloat(behavForm.motivation),
-        adaptability: parseFloat(behavForm.adaptability),
-        communication: parseFloat(behavForm.communication),
-        remarks: behavForm.remarks
-      };
-    } else {
-      url = 'http://localhost:8000/api/achievements';
-      body = {
-        agniveer_id: selectedAgniveer.id,
-        title: achieveForm.title,
-        type: achieveForm.type,
-        points: parseFloat(achieveForm.points),
-        date_earned: new Date().toISOString(),
-        validity_months: parseInt(achieveForm.validity_months)
-      };
-    }
+    const url = `${API_BASE_URL}/api/assessments/technical`;
+    const body = {
+      agniveer_id: selectedAgniveer.id,
+      assessment_date: new Date().toISOString(),
+      firing_score: parseFloat(techForm.firing_score),
+      weapon_handling_score: parseFloat(techForm.weapon_handling_score),
+      tactical_score: parseFloat(techForm.tactical_score),
+      cognitive_score: parseFloat(techForm.cognitive_score)
+    };
 
     try {
       const res = await fetch(url, {
@@ -138,7 +92,7 @@ const OfficerDashboard: React.FC<{ user: User }> = ({ user }) => {
       if (res.ok) {
         setSuccessMessage(`${assessmentType} Assessment Saved Successfully!`);
         // Trigger RRI Recalculation
-        await fetch(`http://localhost:8000/api/rri/calculate/${selectedAgniveer.id}`, { method: 'POST' });
+        await fetch(`${API_BASE_URL}/api/rri/calculate/${selectedAgniveer.id}`, { method: 'POST' });
 
         setTimeout(() => setSuccessMessage(''), 3000);
         // Reset forms
@@ -173,18 +127,7 @@ const OfficerDashboard: React.FC<{ user: User }> = ({ user }) => {
 
       <div className="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
         <div className="p-6 border-b border-stone-100 bg-stone-50/50 flex justify-between items-center">
-          <h2 className="font-bold text-stone-700">New Assessment Entry</h2>
-          <div className="flex space-x-2">
-            {(['TECHNICAL', 'BEHAVIORAL', 'ACHIEVEMENT'] as const).map(type => (
-              <button
-                key={type}
-                onClick={() => setAssessmentType(type)}
-                className={`text-xs font-bold px-3 py-1.5 rounded uppercase tracking-wider ${assessmentType === type ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-stone-500 border border-stone-200'}`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
+          <h2 className="font-bold text-stone-700">New Technical Assessment Entry</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-8">
@@ -243,55 +186,9 @@ const OfficerDashboard: React.FC<{ user: User }> = ({ user }) => {
             </div>
           )}
 
-          {assessmentType === 'BEHAVIORAL' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-stone-50 p-6 rounded-xl border border-stone-200">
-              <h3 className="md:col-span-3 text-sm font-bold text-stone-700 uppercase">Behavioral Competencies (1-10 Scale)</h3>
-              <div>
-                <label className="block text-xs font-bold text-stone-500 mb-1">Quarter</label>
-                <select className={inputClass} value={behavForm.quarter} onChange={e => setBehavForm({ ...behavForm, quarter: e.target.value })}>
-                  <option>Q1</option><option>Q2</option><option>Q3</option><option>Q4</option>
-                </select>
-              </div>
-              {['Initiative', 'Dedication', 'Team Spirit', 'Courage', 'Motivation', 'Adaptability', 'Communication'].map(field => {
-                const key = field.toLowerCase().replace(' ', '_') as keyof typeof behavForm;
-                if (key === 'quarter' || key === 'remarks') return null;
-                return (
-                  <div key={key}>
-                    <label className="block text-xs font-bold text-stone-500 mb-1">{field}</label>
-                    <input required type="number" min="1" max="10" step="0.1" className={inputClass} value={behavForm[key]} onChange={(e) => setBehavForm({ ...behavForm, [key]: e.target.value })} />
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
-          {assessmentType === 'ACHIEVEMENT' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-stone-50 p-6 rounded-xl border border-stone-200">
-              <h3 className="md:col-span-2 text-sm font-bold text-stone-700 uppercase">Special Achievement</h3>
-              <div>
-                <label className="block text-xs font-bold text-stone-500 mb-1">Title</label>
-                <input required type="text" className={inputClass} value={achieveForm.title} onChange={e => setAchieveForm({ ...achieveForm, title: e.target.value })} placeholder="e.g. Gold Medal Boxing" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-stone-500 mb-1">Type</label>
-                <select className={inputClass} value={achieveForm.type} onChange={e => setAchieveForm({ ...achieveForm, type: e.target.value })}>
-                  <option value="SPORTS">Sports</option>
-                  <option value="TECHNICAL">Technical</option>
-                  <option value="LEADERSHIP">Leadership</option>
-                  <option value="BRAVERY">Bravery</option>
-                  <option value="INNOVATION">Innovation</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-stone-500 mb-1">Points</label>
-                <input required type="number" min="1" className={inputClass} value={achieveForm.points} onChange={e => setAchieveForm({ ...achieveForm, points: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-stone-500 mb-1">Validity (Months)</label>
-                <input required type="number" className={inputClass} value={achieveForm.validity_months} onChange={e => setAchieveForm({ ...achieveForm, validity_months: e.target.value })} />
-              </div>
-            </div>
-          )}
+
+
 
           <button
             type="submit"

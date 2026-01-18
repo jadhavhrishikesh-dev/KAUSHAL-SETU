@@ -1,6 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { User, UserRole, InboxItem, EmailDetail } from '../types';
+import { API_BASE_URL, WS_BASE_URL } from '../config';
+import { formatDate, formatDateTime } from './utils';
 
 interface MailModalProps {
     isOpen: boolean;
@@ -29,7 +32,7 @@ const formatRelativeTime = (dateString: string) => {
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-    return date.toLocaleDateString();
+    return formatDate(dateString);
 };
 
 const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
@@ -75,7 +78,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     useEffect(() => {
         if (!isOpen || !user.user_id) return;
 
-        const ws = new WebSocket(`ws://localhost:8000/ws/mail/${user.user_id}`);
+        const ws = new WebSocket(`${WS_BASE_URL}/ws/mail/${user.user_id}`);
 
         ws.onmessage = (event) => {
             try {
@@ -108,7 +111,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     const fetchStats = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/api/mail/stats', {
+            const res = await fetch(`${API_BASE_URL}/api/mail/stats`, {
                 headers: { Authorization: `Bearer ${token}` },
                 cache: 'no-store'
             });
@@ -119,7 +122,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     const fetchBroadcastLists = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/api/admin/broadcast-lists', {
+            const res = await fetch(`${API_BASE_URL}/api/admin/broadcast-lists`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
@@ -135,9 +138,9 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
         try {
             const token = localStorage.getItem('token');
             // Determine endpoint based on folder
-            let endpoint = 'http://localhost:8000/api/mail/inbox';
-            if (folder === 'sent') endpoint = 'http://localhost:8000/api/mail/sent';
-            if (folder === 'trash') endpoint = 'http://localhost:8000/api/mail/trash';
+            let endpoint = `${API_BASE_URL}/api/mail/inbox`;
+            if (folder === 'sent') endpoint = `${API_BASE_URL}/api/mail/sent`;
+            if (folder === 'trash') endpoint = `${API_BASE_URL}/api/mail/trash`;
 
             // Add search and pagination params
             const params = new URLSearchParams();
@@ -179,7 +182,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
         e.stopPropagation();
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/api/mail/${id}/star`, {
+            const res = await fetch(`${API_BASE_URL}/api/mail/${id}/star`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -193,7 +196,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     const fetchDrafts = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/api/mail/drafts', {
+            const res = await fetch(`${API_BASE_URL}/api/mail/drafts`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) setDrafts(await res.json());
@@ -203,7 +206,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     const saveDraft = async () => {
         try {
             const token = localStorage.getItem('token');
-            await fetch('http://localhost:8000/api/mail/drafts', {
+            await fetch(`${API_BASE_URL}/api/mail/drafts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ subject, body, target_type: targetType, target_value: targetValue })
@@ -224,7 +227,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     const handleForward = () => {
         if (!selectedEmail) return;
         setSubject(`Fwd: ${selectedEmail.subject}`);
-        setBody(`\n\n---------- Forwarded message ----------\nFrom: ${selectedEmail.sender_name}\nDate: ${new Date(selectedEmail.timestamp).toLocaleString()}\nSubject: ${selectedEmail.subject}\n\n${selectedEmail.body}`);
+        setBody(`\n\n---------- Forwarded message ----------\nFrom: ${selectedEmail.sender_name}\nDate: ${formatDateTime(selectedEmail.timestamp)}\nSubject: ${selectedEmail.subject}\n\n${selectedEmail.body}`);
         setActiveTab('compose');
         setSelectedUser(null);
         setTargetValue('');
@@ -238,7 +241,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
         }
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/api/users/search?q=${query}`, {
+            const res = await fetch(`${API_BASE_URL}/api/users/search?q=${query}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
@@ -253,8 +256,8 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     const readEmail = async (id: number) => {
         try {
             const token = localStorage.getItem('token');
-            let url = `http://localhost:8000/api/mail/${id}`;
-            if (folder === 'sent') url = `http://localhost:8000/api/mail/sent/${id}`;
+            let url = `${API_BASE_URL}/api/mail/${id}`;
+            if (folder === 'sent') url = `${API_BASE_URL}/api/mail/sent/${id}`;
 
             const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -301,7 +304,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/api/mail/send', {
+            const res = await fetch(`${API_BASE_URL}/api/mail/send`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -327,10 +330,10 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
         if (!confirm("Delete this message?")) return;
         try {
             const token = localStorage.getItem('token');
-            let url = `http://localhost:8000/api/mail/${id}`;
+            let url = `${API_BASE_URL}/api/mail/${id}`;
             if (folder === 'trash') {
                 // Permanent Delete
-                url = `http://localhost:8000/api/mail/trash/${id}`;
+                url = `${API_BASE_URL}/api/mail/trash/${id}`;
             }
 
             const res = await fetch(url, {
@@ -350,7 +353,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
     const handleRestore = async (id: number) => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/api/mail/restore/${id}`, {
+            const res = await fetch(`${API_BASE_URL}/api/mail/restore/${id}`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -368,7 +371,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
         if (!confirm(`Delete ${selectedIds.size} messages?`)) return;
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/api/mail/bulk-delete', {
+            const res = await fetch(`${API_BASE_URL}/api/mail/bulk-delete`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -390,7 +393,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
         setTargetType('individual');
         // Pre-fill
         setSubject(`Re: ${msg.subject}`);
-        setBody(`\n\nOn ${new Date(msg.timestamp).toLocaleString()}, ${msg.sender_name} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`);
+        setBody(`\n\nOn ${formatDateTime(msg.timestamp)}, ${msg.sender_name} wrote:\n> ${msg.body.replace(/\n/g, '\n> ')}`);
 
         // IMPORTANT: We need target user logic.
         // If we have sender_id, we can set it directly if we support ID setting.
@@ -422,8 +425,8 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    return createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
             <div className="bg-white w-full max-w-6xl h-[85vh] rounded-xl shadow-2xl flex overflow-hidden">
 
                 {/* Col 1: Navigation (200px) */}
@@ -591,7 +594,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
                                         >
                                             <h3 className="font-semibold text-gray-800">{draft.subject || '(No Subject)'}</h3>
                                             <p className="text-sm text-gray-500 truncate">{draft.body || '(No Content)'}</p>
-                                            <p className="text-xs text-gray-400 mt-1">Updated: {new Date(draft.updated_at).toLocaleString()}</p>
+                                            <p className="text-xs text-gray-400 mt-1">Updated: {formatDateTime(draft.updated_at)}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -727,7 +730,7 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
                                             </div>
                                             <div>
                                                 <p className="font-bold text-gray-900">{selectedEmail.sender_name}</p>
-                                                <p className="text-xs text-gray-500">{selectedEmail.sender_role} • {new Date(selectedEmail.timestamp).toLocaleString()}</p>
+                                                <p className="text-xs text-gray-500">{selectedEmail.sender_role} • {formatDateTime(selectedEmail.timestamp)}</p>
                                             </div>
                                         </div>
                                         <button
@@ -781,7 +784,8 @@ const MailModal: React.FC<MailModalProps> = ({ isOpen, onClose, user }) => {
                     )}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

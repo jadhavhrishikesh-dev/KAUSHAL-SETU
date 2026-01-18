@@ -42,17 +42,10 @@ export interface AgniveerData {
   rri: number;
   metrics: PerformanceMetrics;
   growthPlan: string[];
-  recentMessages: Message[];
 }
 
-export interface Message {
-  id: number;
-  agniveer_id: number;
-  sender_role: string;
-  recipient_role: string;
-  content: string;
-  timestamp: string;
-}
+
+
 
 export interface Task {
   id: string;
@@ -73,6 +66,17 @@ export interface AgniveerProfile {
   joining_date?: string;
   email?: string;
   phone?: string;
+  upcoming_tests?: ScheduledTest[];
+}
+
+export interface ScheduledTest {
+  id: number;
+  name: string;
+  test_type: string;
+  description?: string;
+  scheduled_date: string;
+  location?: string;
+  status: string;
 }
 
 // Access Control Types using Role Enums
