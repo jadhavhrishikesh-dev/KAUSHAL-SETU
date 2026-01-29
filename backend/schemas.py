@@ -296,7 +296,7 @@ from .models import TestType
 
 class ScheduledTestCreate(BaseModel):
     name: str
-    test_type: TestType
+    test_type: str
     description: Optional[str] = None
     scheduled_date: datetime
     end_time: Optional[datetime] = None
@@ -309,7 +309,7 @@ class ScheduledTestCreate(BaseModel):
 
 class ScheduledTestUpdate(BaseModel):
     name: Optional[str] = None
-    test_type: Optional[TestType] = None
+    test_type: Optional[str] = None
     description: Optional[str] = None
     scheduled_date: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -342,6 +342,40 @@ class TestResultResponse(TestResultCreate):
     test_id: int
     recorded_at: datetime
     recorded_by: Optional[int] = None
+    agniveer_name: Optional[str] = None
+    agniveer_service_id: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+# ============================================================
+# COUNSELLING SCHEMAS
+# ============================================================
+from .models import CounsellingStatus
+
+class CounsellingSessionCreate(BaseModel):
+    agniveer_id: Optional[int] = None  # Optional if scheduling by batch
+    batch_name: Optional[str] = None   # For batch scheduling
+    scheduled_date: datetime
+    topic: Optional[str] = None
+
+class CounsellingSessionUpdate(BaseModel):
+    notes: Optional[str] = None
+    action_items: Optional[str] = None
+    status: Optional[CounsellingStatus] = None
+
+class CounsellingSessionResponse(BaseModel):
+    id: int
+    agniveer_id: int
+    officer_id: int
+    scheduled_date: datetime
+    batch_group: Optional[str] = None
+    topic: Optional[str] = None
+    status: CounsellingStatus
+    notes: Optional[str] = None
+    action_items: Optional[str] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
     agniveer_name: Optional[str] = None
     agniveer_service_id: Optional[str] = None
     

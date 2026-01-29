@@ -60,10 +60,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-stone-950 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background Gradients */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-teal-900/20 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-yellow-900/10 rounded-full blur-[120px]"></div>
+      {/* Background Image */}
+      <div className="absolute inset-0 z-0">
+        <img
+          src="/assets/login-bg.jpg"
+          alt="Background"
+          className="w-full h-full object-cover opacity-40 grayscale"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/80 to-stone-900/80 mix-blend-multiply"></div>
       </div>
 
       <div className="max-w-md w-full bg-stone-900/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-stone-800 overflow-hidden relative z-10">
@@ -149,7 +153,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
           <div className="mt-8 text-center space-y-2">
             <p className="text-[10px] font-bold text-stone-600 uppercase tracking-[0.2em] border-t border-stone-800 pt-6">
-              Internal Defense Network Protocol
+              Test Version 1.0
             </p>
           </div>
         </form>

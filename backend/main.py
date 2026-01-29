@@ -957,6 +957,12 @@ def create_scheduled_test(
     db.refresh(db_test)
     return db_test
 
+@app.get("/api/tests/types")
+def get_test_types(db: Session = Depends(get_db)):
+    types = db.query(models.ScheduledTest.test_type).distinct().all()
+    # Filter out None if any
+    return sorted(list(set([t[0] for t in types if t[0]])))
+
 @app.get("/api/tests", response_model=List[schemas.ScheduledTestResponse])
 def get_scheduled_tests(
     target_type: Optional[str] = None,
@@ -1189,3 +1195,198 @@ def get_test_agniveers(test_id: int, db: Session = Depends(get_db)):
         })
     
     return result
+
+# ============================================================
+# COUNSELLING MODULE ENDPOINTS
+# ============================================================
+
+@app.post("/api/counselling", response_model=List[schemas.CounsellingSessionResponse])
+def schedule_counselling(
+    data: schemas.CounsellingSessionCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    """Schedule counselling session(s). If batch_name provided, creates individual sessions for all Agniveers in that batch."""
+    # Get officer ID from token
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        user = db.query(models.User).filter(models.User.username == username).first()
+        officer_id = user.user_id if user else 1
+    except:
+        officer_id = 1
+    
+    sessions = []
+    
+    if data.batch_name:
+        # Batch scheduling - create session for each Agniveer in batch
+        agniveers = db.query(models.Agniveer).filter(models.Agniveer.batch_no == data.batch_name).all()
+        for a in agniveers:
+            session = models.CounsellingSession(
+                agniveer_id=a.id,
+                officer_id=officer_id,
+                scheduled_date=data.scheduled_date,
+                batch_group=data.batch_name,
+                topic=data.topic,
+                status=models.CounsellingStatus.SCHEDULED
+            )
+            db.add(session)
+            sessions.append(session)
+    elif data.agniveer_id:
+        # Individual scheduling
+        session = models.CounsellingSession(
+            agniveer_id=data.agniveer_id,
+            officer_id=officer_id,
+            scheduled_date=data.scheduled_date,
+            topic=data.topic,
+            status=models.CounsellingStatus.SCHEDULED
+        )
+        db.add(session)
+        sessions.append(session)
+    else:
+        raise HTTPException(status_code=400, detail="Must provide either agniveer_id or batch_name")
+    
+    db.commit()
+    for s in sessions:
+        db.refresh(s)
+        s.agniveer_name = s.agniveer.name
+        s.agniveer_service_id = s.agniveer.service_id
+    
+    return sessions
+
+@app.get("/api/counselling/company/{company_name}", response_model=List[schemas.CounsellingSessionResponse])
+def get_company_counselling_sessions(company_name: str, db: Session = Depends(get_db)):
+    """Get all counselling sessions for Agniveers in a company."""
+    sessions = db.query(models.CounsellingSession).join(models.Agniveer).filter(
+        models.Agniveer.company == company_name
+    ).order_by(models.CounsellingSession.scheduled_date.desc()).all()
+    
+    for s in sessions:
+        s.agniveer_name = s.agniveer.name
+        s.agniveer_service_id = s.agniveer.service_id
+    
+    return sessions
+
+@app.get("/api/counselling/agniveer/{agniveer_id}/history", response_model=List[schemas.CounsellingSessionResponse])
+def get_agniveer_counselling_history(agniveer_id: int, db: Session = Depends(get_db)):
+    """Get counselling history for a specific Agniveer."""
+    sessions = db.query(models.CounsellingSession).filter(
+        models.CounsellingSession.agniveer_id == agniveer_id
+    ).order_by(models.CounsellingSession.scheduled_date.desc()).all()
+    
+    for s in sessions:
+        s.agniveer_name = s.agniveer.name
+        s.agniveer_service_id = s.agniveer.service_id
+    
+    return sessions
+
+@app.put("/api/counselling/{session_id}/complete", response_model=schemas.CounsellingSessionResponse)
+def complete_counselling_session(
+    session_id: int,
+    data: schemas.CounsellingSessionUpdate,
+    db: Session = Depends(get_db)
+):
+    """Complete a counselling session with notes and action items."""
+    session = db.query(models.CounsellingSession).filter(models.CounsellingSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    if data.notes:
+        session.notes = data.notes
+    if data.action_items:
+        session.action_items = data.action_items
+    if data.status:
+        session.status = data.status
+        if data.status == models.CounsellingStatus.COMPLETED:
+            session.completed_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(session)
+    session.agniveer_name = session.agniveer.name
+    session.agniveer_service_id = session.agniveer.service_id
+    
+    return session
+
+@app.get("/api/counselling/{session_id}/performance-sheet")
+def get_counselling_performance_sheet(session_id: int, db: Session = Depends(get_db)):
+    """Get detailed performance sheet for an Agniveer during counselling."""
+    session = db.query(models.CounsellingSession).filter(models.CounsellingSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    agniveer = session.agniveer
+    
+    # Get latest RRI
+    rri = db.query(models.RetentionReadiness).filter(
+        models.RetentionReadiness.agniveer_id == agniveer.id
+    ).order_by(models.RetentionReadiness.calculation_date.desc()).first()
+    
+    # Get latest technical assessment
+    tech = db.query(models.TechnicalAssessment).filter(
+        models.TechnicalAssessment.agniveer_id == agniveer.id
+    ).order_by(models.TechnicalAssessment.assessment_date.desc()).first()
+    
+    # Get behavioral assessments
+    behavs = db.query(models.BehavioralAssessment).filter(
+        models.BehavioralAssessment.agniveer_id == agniveer.id
+    ).order_by(models.BehavioralAssessment.assessment_date.desc()).limit(4).all()
+    
+    # Get achievements
+    achievements = db.query(models.Achievement).filter(
+        models.Achievement.agniveer_id == agniveer.id
+    ).order_by(models.Achievement.date_earned.desc()).all()
+    
+    # Get past counselling notes
+    past_sessions = db.query(models.CounsellingSession).filter(
+        models.CounsellingSession.agniveer_id == agniveer.id,
+        models.CounsellingSession.status == models.CounsellingStatus.COMPLETED,
+        models.CounsellingSession.id != session_id
+    ).order_by(models.CounsellingSession.completed_at.desc()).limit(5).all()
+    
+    return {
+        "agniveer": {
+            "id": agniveer.id,
+            "name": agniveer.name,
+            "service_id": agniveer.service_id,
+            "batch_no": agniveer.batch_no,
+            "company": agniveer.company,
+            "rank": agniveer.rank,
+            "photo_url": agniveer.photo_url
+        },
+        "rri": {
+            "score": rri.rri_score if rri else None,
+            "band": rri.retention_band.value if rri else None,
+            "technical_component": rri.technical_component if rri else None,
+            "behavioral_component": rri.behavioral_component if rri else None,
+            "achievement_component": rri.achievement_component if rri else None
+        } if rri else None,
+        "technical_assessment": {
+            "firing": tech.firing_score if tech else None,
+            "weapon_handling": tech.weapon_handling_score if tech else None,
+            "tactical": tech.tactical_score if tech else None,
+            "cognitive": tech.cognitive_score if tech else None,
+            "date": tech.assessment_date.isoformat() if tech else None
+        } if tech else None,
+        "behavioral_assessments": [{
+            "quarter": b.quarter,
+            "initiative": b.initiative,
+            "dedication": b.dedication,
+            "team_spirit": b.team_spirit,
+            "courage": b.courage,
+            "motivation": b.motivation,
+            "adaptability": b.adaptability,
+            "date": b.assessment_date.isoformat()
+        } for b in behavs],
+        "achievements": [{
+            "title": a.title,
+            "type": a.type.value,
+            "points": a.points,
+            "date": a.date_earned.isoformat()
+        } for a in achievements],
+        "past_counselling": [{
+            "date": s.completed_at.isoformat() if s.completed_at else s.scheduled_date.isoformat(),
+            "topic": s.topic,
+            "notes": s.notes,
+            "action_items": s.action_items
+        } for s in past_sessions]
+    }

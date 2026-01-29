@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Enum as SQLEnum
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Enum as SQLEnum, Text
 from sqlalchemy.orm import relationship
 from .database import Base
 import enum
@@ -309,7 +309,7 @@ class ScheduledTest(Base):
     
     # Test Identity
     name = Column(String, nullable=False)
-    test_type = Column(SQLEnum(TestType), nullable=False)
+    test_type = Column(String, nullable=False)
     description = Column(String, nullable=True)
     
     # Scheduling
@@ -348,3 +348,44 @@ class TestResult(Base):
     # Relationships
     test = relationship("ScheduledTest", back_populates="results")
     agniveer = relationship("Agniveer")
+
+# ============================================================
+# COUNSELLING MODULE
+# ============================================================
+
+class CounsellingStatus(str, enum.Enum):
+    SCHEDULED = "SCHEDULED"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    NO_SHOW = "NO_SHOW"
+
+class CounsellingSession(Base):
+    __tablename__ = "counselling_sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Target Agniveer (always individual, even if scheduled as batch)
+    agniveer_id = Column(Integer, ForeignKey("agniveers.id"), nullable=False)
+    
+    # Conducting Officer
+    officer_id = Column(Integer, ForeignKey("users_auth.user_id"), nullable=False)
+    
+    # Scheduling
+    scheduled_date = Column(DateTime, nullable=False)
+    batch_group = Column(String, nullable=True)  # If scheduled as part of batch, store batch name for reference
+    
+    # Session Details
+    topic = Column(String, nullable=True)  # Agenda/Topic for the session
+    status = Column(SQLEnum(CounsellingStatus), default=CounsellingStatus.SCHEDULED)
+    
+    # Session Notes (filled during/after counselling)
+    notes = Column(Text, nullable=True)
+    action_items = Column(Text, nullable=True)  # Follow-up actions
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    agniveer = relationship("Agniveer", backref="counselling_sessions")
+    officer = relationship("User")
