@@ -89,3 +89,55 @@ python -m pytest tests/
 | **Backend** | `.venv/bin/uvicorn backend.main:app --reload` | `8000` |
 | **Frontend** | `npm run dev` | `3000` |
 | **Tests** | `python -m pytest tests/` | N/A |
+
+---
+
+## 4. Windows Deployment
+
+### A. Prerequisites (Windows)
+1.  **Python**: Install from [python.org](https://www.python.org/downloads/). Ensure you check **"Add Python to PATH"** during installation.
+2.  **Node.js**: Install from [nodejs.org](https://nodejs.org/).
+3.  **Git**: Install Git for Windows.
+4.  **Terminal**: We recommend using **PowerShell** (Run as Administrator for initial setup) or **Command Prompt (cmd)**.
+
+### B. Backend Setup (Windows)
+
+**1. Create/Activate Virtual Environment**
+Open PowerShell/CMD in the project root:
+```powershell
+# Create venv (if not exists)
+python -m venv .venv
+
+# Activate venv
+# PowerShell:
+.\.venv\Scripts\Activate.ps1
+# CMD:
+.venv\Scripts\activate.bat
+```
+> **Note**: If PowerShell blocks script execution, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+
+**2. Install Requirements**
+```powershell
+pip install -r requirements.txt
+```
+
+**3. Run Server**
+```powershell
+python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### C. Frontend Setup (Windows)
+
+**1. Install & Run**
+```powershell
+npm install
+npm run dev
+```
+Access at [http://localhost:3000](http://localhost:3000).
+
+---
+
+## 5. Troubleshooting (Windows)
+*   **"uvicorn not found"**: Ensure `.venv` is active. Try running with `python -m uvicorn ...`.
+*   **Port Access**: If Windows Firewall blocks access, allow the port when prompted or configure an Inbound Rule for port 8000.
+*   **Execution Policy**: If you can't run scripts, check your execution policy settings as mentioned above.
