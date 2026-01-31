@@ -16,11 +16,16 @@ import os
 load_dotenv()
 
 from . import models, schemas, database, rri_engine, analytics, ai_service, admin_service
+from .seed_admin import seed_admin
 
 # Create Database Tables
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="KAUSHAL-SETU API", version="1.0.0")
+
+@app.on_event("startup")
+def startup_event():
+    seed_admin()
 
 # HTTPS Enforcement (enable in production via FORCE_HTTPS=true)
 if os.getenv("FORCE_HTTPS", "false").lower() == "true":
